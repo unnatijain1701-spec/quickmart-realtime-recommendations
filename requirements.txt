@@ -1,0 +1,10 @@
+pymongo
+dnspython
+python-dotenv
+pandas
+kafka-python
+fastapi
+uvicorn
+websockets
+dash
+plotly

@@ -1,0 +1,394 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QuickMart - live recommendations demo</title>
+<link rel="icon" href="data:,">
+<style>
+  :root { --green:#14532D; --green2:#166534; --amber:#F59E0B; --bg:#F4F6F4; --ink:#1B1F23; --muted:#6B7280; --card:#FFFFFF;
+          --line:#E3E8E4; --teal:#0F766E; --red:#B91C1C; --shadow:0 1px 3px rgba(0,0,0,.10); }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:Calibri, "Segoe UI", Arial, sans-serif; background:var(--bg); color:var(--ink); }
+  button { font:inherit; cursor:pointer; border:0; border-radius:8px; }
+  select, input { font:inherit; }
+
+  /* ---------- header ---------- */
+  header { background:var(--green); color:#fff; position:sticky; top:0; z-index:20; }
+  .hdr { display:flex; align-items:center; gap:16px; padding:10px 20px; max-width:1400px; margin:0 auto; }
+  .brand { font-size:24px; font-weight:700; font-family:Cambria, Georgia, serif; white-space:nowrap; }
+  .eta { font-size:13px; line-height:1.2; color:#D1FAE5; white-space:nowrap; }
+  .eta b { display:block; color:#fff; font-size:15px; }
+  .searchbox { flex:1; min-width:120px; }
+  .searchbox input { width:100%; padding:10px 14px; border:0; border-radius:10px; background:#fff; color:var(--ink); }
+  .who { font-size:13px; color:#D1FAE5; display:flex; align-items:center; gap:8px; white-space:nowrap; }
+  .badge { padding:3px 10px; border-radius:999px; font-weight:700; font-size:12px; }
+  .badge.live { background:var(--amber); color:var(--ink); }
+  .badge.stale { background:#9CA3AF; color:#fff; }
+  .conn::before { content:""; display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:5px; background:#F87171; }
+  .conn.on::before { background:#34D399; }
+  #cartBtn { background:var(--amber); color:var(--ink); font-weight:700; padding:10px 16px; display:flex; gap:10px; align-items:center; white-space:nowrap; }
+  #cartBtn.bump { animation:bump .4s ease; }
+  @keyframes bump { 40% { transform:scale(1.07); } }
+
+  /* ---------- layout ---------- */
+  .layout { display:grid; grid-template-columns:210px 1fr; gap:18px; padding:16px 20px 40px; max-width:1400px; margin:0 auto; align-items:start; }
+  .rail { background:var(--card); border-radius:12px; padding:8px; box-shadow:var(--shadow); position:sticky; top:72px; max-height:calc(100vh - 90px); overflow:auto; }
+  .rail h3 { margin:6px 8px 6px; font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+  .cat { display:flex; align-items:center; gap:10px; width:100%; padding:8px 10px; background:none; text-align:left; color:var(--ink); }
+  .cat:hover { background:#EEF3EF; }
+  .cat.active { background:#DCFCE7; color:var(--green); font-weight:700; }
+  .dot { width:14px; height:14px; border-radius:4px; flex:none; }
+  .content { min-width:0; }
+  @media (max-width:860px) {
+    .layout { grid-template-columns:1fr; padding:12px; }
+    .rail { position:static; max-height:none; display:flex; gap:6px; overflow-x:auto; padding:6px; }
+    .rail h3 { display:none; } .cat { width:auto; white-space:nowrap; border-radius:999px; border:1px solid var(--line); }
+    .eta, .who .who-id { display:none; }
+    .hdr { gap:8px 10px; padding:10px 12px; flex-wrap:wrap; }
+    .brand { font-size:21px; } .who { margin-left:auto; flex-wrap:wrap; justify-content:flex-end; }
+    .searchbox { order:5; flex-basis:100%; } #cartBtn { padding:8px 12px; }
+  }
+
+  /* ---------- recommendation strip ---------- */
+  .recs { background:#fff; border-radius:14px; padding:14px 16px 12px; box-shadow:var(--shadow); margin-bottom:16px; border-left:5px solid var(--amber); }
+  .recs h2 { margin:0 0 10px; font-size:19px; color:var(--green); font-family:Cambria, Georgia, serif; display:flex; align-items:center; gap:8px; }
+  .tag { font-family:Calibri, Arial, sans-serif; font-size:12px; font-weight:700; padding:2px 8px; border-radius:999px; background:var(--green); color:#fff; }
+  .tag.stale { background:#6B7280; }
+  .reclist { display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:10px; }
+  .rec { display:flex; gap:10px; background:#F8FAF8; border:1px solid var(--line); border-radius:12px; padding:10px; cursor:pointer; }
+  .rec:hover { border-color:var(--green); }
+  .rec .tile { width:56px; height:56px; font-size:30px; }
+  .rec .body { flex:1; min-width:0; }
+  .rec .nm { font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .rec .foot { display:flex; justify-content:space-between; align-items:center; margin-top:6px; gap:6px; }
+  .rec.flash { animation:flash .9s ease; }
+  @keyframes flash { from { background:#FEF3C7; border-color:var(--amber); } to { background:#F8FAF8; } }
+  .chip { display:inline-block; padding:2px 9px; border-radius:999px; font-size:12px; font-weight:700; color:#fff; margin-top:4px; }
+  .chip.cart_complement { background:var(--green); } .chip.trending { background:#B45309; } .chip.offer { background:var(--teal); }
+  .why { font-size:13px; color:var(--muted); margin-top:3px; }
+  .empty { padding:14px; color:var(--muted); background:#F8FAF8; border-radius:10px; grid-column:1/-1; }
+  #latency { margin-top:10px; font-size:13px; color:var(--muted); }
+
+  /* ---------- product grid ---------- */
+  .gridhead { display:flex; justify-content:space-between; align-items:baseline; margin:4px 2px 10px; }
+  .gridhead h2 { margin:0; font-size:19px; color:var(--green); font-family:Cambria, Georgia, serif; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(190px, 1fr)); gap:12px; }
+  .card { background:var(--card); border-radius:12px; padding:10px; box-shadow:var(--shadow); display:flex; flex-direction:column; cursor:pointer; position:relative; }
+  .card:hover { box-shadow:0 2px 8px rgba(0,0,0,.16); }
+  .tile { border-radius:10px; display:flex; align-items:center; justify-content:center; text-align:center; font-weight:700; color:rgba(0,0,0,.55); padding:6px; line-height:1.15; }
+  .card .tile { height:104px; font-size:58px; }
+  .disc { position:absolute; top:8px; left:8px; background:var(--teal); color:#fff; font-size:11px; font-weight:700; padding:3px 7px; border-radius:6px; }
+  .card .nm { font-weight:700; margin-top:8px; }
+  .meta { font-size:13px; color:var(--muted); }
+  .card .bottom { display:flex; justify-content:space-between; align-items:center; margin-top:auto; padding-top:10px; }
+  .price { font-weight:700; }
+  .add { background:#fff; color:var(--green); border:1.5px solid var(--green); font-weight:700; padding:5px 16px; }
+  .add:hover { background:#DCFCE7; }
+  .step { display:inline-flex; align-items:center; background:var(--green); color:#fff; border-radius:8px; overflow:hidden; }
+  .step button { background:none; color:#fff; width:30px; height:30px; font-size:18px; font-weight:700; border-radius:0; }
+  .step button:hover { background:var(--green2); }
+  .step span { min-width:22px; text-align:center; font-weight:700; }
+  .more { margin:16px auto 0; display:block; background:#E5E7EB; padding:9px 22px; font-weight:700; }
+
+  /* ---------- cart drawer ---------- */
+  #overlay { position:fixed; inset:0; background:rgba(0,0,0,.35); opacity:0; pointer-events:none; transition:opacity .2s; z-index:30; }
+  #overlay.open { opacity:1; pointer-events:auto; }
+  #drawer { position:fixed; top:0; right:0; bottom:0; width:min(400px, 100vw); background:#F4F6F4; z-index:40; transform:translateX(100%); transition:transform .25s;
+            display:flex; flex-direction:column; box-shadow:-4px 0 18px rgba(0,0,0,.2); }
+  #drawer.open { transform:none; }
+  .dhead { display:flex; justify-content:space-between; align-items:center; padding:14px 16px; background:#fff; border-bottom:1px solid var(--line); }
+  .dhead h2 { margin:0; font-size:20px; font-family:Cambria, Georgia, serif; color:var(--green); }
+  .close { background:#E5E7EB; width:34px; height:34px; font-size:18px; }
+  .dbody { flex:1; overflow:auto; padding:14px 16px; }
+  .line { display:flex; gap:10px; align-items:center; background:#fff; border-radius:10px; padding:8px; margin-bottom:8px; box-shadow:var(--shadow); }
+  .line .tile { width:46px; height:46px; font-size:24px; flex:none; }
+  .line .info { flex:1; min-width:0; }
+  .line .nm { font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .line .step button { width:26px; height:26px; }
+  .line .amt { min-width:64px; text-align:right; font-weight:700; }
+  .rm { background:none; color:var(--muted); font-size:12px; text-decoration:underline; padding:2px 0; }
+  .bill { background:#fff; border-radius:10px; padding:12px 14px; margin-top:12px; box-shadow:var(--shadow); }
+  .bill h3 { margin:0 0 8px; font-size:15px; }
+  .row { display:flex; justify-content:space-between; font-size:14px; margin:5px 0; }
+  .row.save { color:var(--teal); font-weight:700; }
+  .row.grand { border-top:1px dashed var(--line); padding-top:8px; margin-top:8px; font-size:17px; font-weight:700; }
+  .bar { height:10px; background:#D5DDD7; border-radius:999px; overflow:hidden; margin-top:8px; }
+  #barFill { height:100%; width:0; background:var(--green); transition:width .3s; }
+  .note { font-size:12px; color:var(--muted); margin-top:8px; }
+  .dfoot { padding:12px 16px; background:#fff; border-top:1px solid var(--line); }
+  .primary { width:100%; padding:12px; background:var(--amber); color:var(--ink); font-weight:700; font-size:16px; }
+  .primary:disabled { background:#D1D5DB; color:#6B7280; cursor:not-allowed; }
+  .emptycart { text-align:center; color:var(--muted); padding:40px 10px; }
+  #toast { position:fixed; left:50%; bottom:22px; transform:translateX(-50%); background:var(--green); color:#fff; padding:10px 18px; border-radius:10px; font-weight:700;
+           opacity:0; pointer-events:none; transition:opacity .2s; z-index:60; max-width:90vw; }
+  #toast.show { opacity:1; }
+</style>
+</head>
+<body>
+<header>
+  <div class="hdr">
+    <div class="brand">QuickMart</div>
+    <div class="eta"><b>Delivery in 9 mins</b>live recommendations demo</div>
+    <div class="searchbox"><input id="search" type="search" placeholder="Search for milk, bread, chips..." autocomplete="off"></div>
+    <div class="who"><span class="who-id" id="who"></span><span id="badge" class="badge"></span><span id="conn" class="conn">connecting</span></div>
+    <button id="cartBtn" aria-label="Open cart"><span>&#128722;</span><span id="cartCount">0 items</span><span id="cartTotal">Rs 0</span></button>
+  </div>
+</header>
+
+<div class="layout">
+  <nav class="rail" id="rail"></nav>
+  <div class="content">
+    <section class="recs">
+      <h2>Recommended for you <span id="viewTag" class="tag"></span></h2>
+      <div id="recList" class="reclist"></div>
+      <div id="latency"></div>
+    </section>
+    <div class="gridhead"><h2 id="gridTitle">Popular products</h2><span class="meta" id="gridCount"></span></div>
+    <div id="products" class="grid"></div>
+  </div>
+</div>
+
+<div id="overlay"></div>
+<aside id="drawer" aria-label="Your cart">
+  <div class="dhead"><h2>Your cart</h2><button class="close" id="closeCart" aria-label="Close cart">&times;</button></div>
+  <div class="dbody">
+    <div id="cartItems"></div>
+    <div id="billBox" class="bill">
+      <h3>Bill details</h3>
+      <div class="row"><span>Items total</span><span id="bItems">Rs 0</span></div>
+      <div class="row save" id="bSaveRow"><span>You save (offers)</span><span id="bSave">- Rs 0</span></div>
+      <div class="row"><span>Delivery charge</span><span id="bDel">Rs 0</span></div>
+      <div class="row"><span>Handling charge</span><span id="bHand">Rs 0</span></div>
+      <div class="row grand"><span>To pay</span><span id="bGrand">Rs 0</span></div>
+      <div class="bar"><div id="barFill"></div></div>
+      <div id="freeText" class="note"></div>
+      <div class="note">Delivery and handling fees are shown for the screen only; the pipeline records item totals after offers.</div>
+    </div>
+  </div>
+  <div class="dfoot"><button id="orderBtn" class="primary" disabled>Place order</button></div>
+</aside>
+<div id="toast"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const money = n => "Rs " + Math.round(n).toLocaleString("en-IN");
+const rating = p => p.rating ? "★ " + Number(p.rating).toFixed(1) + " (" + p.rating_count + ")" : "no rating yet";
+const RULE = { cart_complement: "Bought together", trending: "Trending now", offer: "Offer" };
+const DELIVERY_FEE = 25, HANDLING_FEE = 2;
+const PAGE = 48;
+
+const state = { user: null, group: null, session: "s_web_" + Math.random().toString(36).slice(2, 8),
+                cart: new Map(), sent: new Map(), lat: [], seen: new Map(), threshold: 999, products: new Map(), ws: null,
+                category: "", shown: [], limit: PAGE };
+
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove("show"), 3500); }
+
+async function act(type, extra = {}) {
+  const t0 = performance.now();
+  try {
+    const res = await api("/api/action", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_id: state.user, session_id: state.session, type, ...extra }) });
+    res.event_ids.forEach(id => { state.sent.set(id, t0); if (state.seen.has(id)) showLatency(state.seen.get(id) - t0); });
+    if (state.sent.size > 200) state.sent.delete(state.sent.keys().next().value);
+  } catch (e) { toast("Could not send the action: " + e.message); }
+}
+
+/* ---------- placeholder tiles (no photos: category colour + name) ---------- */
+function hue(s) { let h = 0; for (const c of String(s)) h = (h * 31 + c.charCodeAt(0)) % 360; return h; }
+const tileStyle = p => `background:hsl(${hue(p.category)} 55% 88%)`;
+/* one emoji per product name instead of photos (the dataset has none); unknown names fall back to a basket */
+const EMOJI = {"Baby Food": "🍼", "Baby Wipes": "🧻", "Diapers": "👶", "Cola": "🥤", "Iced Tea": "🍵", "Lemonade": "🍋", "Mango Drink": "🥭", "Orange Juice": "🍊", "Bread": "🍞", "Butter": "🧈", "Cereal": "🥣", "Cheese": "🧀", "Curd": "🍦", "Eggs": "🥚", "Milk": "🥛", "Bananas": "🍌", "Carrots": "🥕", "Mangoes": "🥭", "Onions": "🧅", "Potatoes": "🥔", "Spinach": "🥬", "Tomatoes": "🍅", "Pulses": "🍲", "Rice": "🍚", "Salt": "🧂", "Sugar": "🥄", "Wheat Flour": "🌾", "Detergent": "🧺", "Dish Soap": "🧽", "Toilet Cleaner": "🚽", "Frozen Biryani": "🍛", "Frozen Pizza": "🍕", "Frozen Vegetables": "🥦", "Ice Cream": "🍨", "Instant Noodles": "🍜", "Lotion": "🧴", "Shampoo": "🚿", "Soap": "🧼", "Toothpaste": "🦷", "Cat Food": "🐱", "Dog Food": "🐶", "Pet Treats": "🦴", "Cough Syrup": "🧪", "Pain Reliever": "🤕", "Vitamins": "💊", "Biscuits": "🍘", "Chips": "🍟", "Chocolates": "🍫", "Cookies": "🍪", "Nuts": "🥜", "Popcorn": "🍿"};
+const tile = (p, cls = "") => `<div class="tile ${cls}" role="img" aria-label="${esc(p.name)}" style="${tileStyle(p)}">${EMOJI[p.name] || "🛒"}</div>`;
+
+/* ---------- categories ---------- */
+function renderRail(cats) {
+  const all = [{ name: "", label: "All products" }, ...cats.map(c => ({ name: c, label: c }))];
+  $("rail").innerHTML = '<h3>Categories</h3>' + all.map(c =>
+    `<button class="cat${c.name === state.category ? " active" : ""}" data-cat="${esc(c.name)}"><span class="dot" style="background:${c.name ? `hsl(${hue(c.name)} 55% 70%)` : "#9CA3AF"}"></span>${esc(c.label)}</button>`).join("");
+}
+$("rail").addEventListener("click", e => {
+  const b = e.target.closest("[data-cat]"); if (!b) return;
+  state.category = b.dataset.cat;
+  [...$("rail").querySelectorAll(".cat")].forEach(x => x.classList.toggle("active", x === b));
+  loadProducts();
+});
+
+/* ---------- product grid ---------- */
+function controls(pid) {
+  const e = state.cart.get(pid);
+  return e ? `<div class="step"><button data-dec="${pid}" aria-label="Remove one">&minus;</button><span>${e.qty}</span><button data-inc="${pid}" aria-label="Add one">+</button></div>`
+           : `<button class="add" data-add="${pid}">ADD</button>`;
+}
+function cardHtml(p) {
+  return `<div class="card" data-view="${p.product_id}">${p.offer_pct ? `<div class="disc">${p.offer_pct}% OFF</div>` : ""}
+    ${tile(p)}<div class="nm">${esc(p.name)}</div><div class="meta">${esc(p.brand)}</div><div class="meta">${rating(p)}</div>
+    <div class="bottom"><div class="price">${money(p.price)}</div><div class="ctl" data-ctl="${p.product_id}">${controls(p.product_id)}</div></div></div>`;
+}
+function renderGrid() {
+  const list = state.shown.slice(0, state.limit);
+  $("products").innerHTML = list.map(cardHtml).join("") || '<div class="empty">No products found.</div>';
+  $("gridCount").textContent = state.shown.length ? `${Math.min(list.length, state.shown.length)} of ${state.shown.length}` : "";
+  let more = $("moreBtn");
+  if (state.shown.length > state.limit) {
+    if (!more) { more = document.createElement("button"); more.id = "moreBtn"; more.className = "more"; more.textContent = "Show more"; $("products").after(more);
+                 more.addEventListener("click", () => { state.limit += PAGE; renderGrid(); }); }
+  } else if (more) more.remove();
+}
+async function loadProducts() {
+  const q = $("search").value.trim();
+  let list = await api("/api/products?limit=300&category=" + encodeURIComponent(state.category) + "&q=" + encodeURIComponent(q));
+  list.forEach(p => state.products.set(p.product_id, p));
+  if (!state.category && !q) list = list.sort(() => Math.random() - 0.5).slice(0, 30);
+  state.shown = list; state.limit = PAGE;
+  $("gridTitle").textContent = q ? `Results for "${q}"` : (state.category || "Popular products");
+  renderGrid();
+}
+let searchTimer; $("search").addEventListener("input", () => { clearTimeout(searchTimer); searchTimer = setTimeout(loadProducts, 250); });
+$("products").addEventListener("click", e => {
+  const add = e.target.closest("[data-add],[data-inc]");
+  if (add) { addToCart(Number(add.dataset.add || add.dataset.inc)); return; }
+  const dec = e.target.closest("[data-dec]"); if (dec) { changeQty(Number(dec.dataset.dec), -1); return; }
+  const card = e.target.closest("[data-view]"); if (card) act("product_click", { product_id: Number(card.dataset.view) });
+});
+
+/* ---------- cart ---------- */
+function addToCart(pid, extra) {
+  const p = state.products.get(pid); if (!p) return;
+  const e = state.cart.get(pid); state.cart.set(pid, { p, qty: (e ? e.qty : 0) + 1 });
+  renderCart(pid); if (extra) act(extra.type, extra.fields); else act("add_to_cart", { product_id: pid, qty: 1 });
+}
+function changeQty(pid, delta) {
+  const e = state.cart.get(pid); if (!e) return;
+  if (delta > 0) { addToCart(pid); return; }
+  e.qty -= 1; if (e.qty <= 0) state.cart.delete(pid);
+  renderCart(pid); act("remove_from_cart", { product_id: pid, qty: 1 });
+}
+function removeLine(pid) {
+  const e = state.cart.get(pid); if (!e) return;
+  state.cart.delete(pid); renderCart(pid); act("remove_from_cart", { product_id: pid, qty: e.qty });
+}
+const subtotal = () => { let t = 0; state.cart.forEach(e => t += e.qty * e.p.price); return t; };
+const savings = () => { let t = 0; state.cart.forEach(e => t += e.qty * e.p.price * (e.p.offer_pct || 0) / 100); return t; };
+const itemCount = () => { let n = 0; state.cart.forEach(e => n += e.qty); return n; };
+
+function renderCart(changedPid) {
+  const net = subtotal() - savings(), n = itemCount();
+  const free = net >= state.threshold, delivery = n === 0 ? 0 : (free ? 0 : DELIVERY_FEE), handling = n === 0 ? 0 : HANDLING_FEE;
+  $("cartCount").textContent = n + (n === 1 ? " item" : " items");
+  $("cartTotal").textContent = money(net);
+  $("cartItems").innerHTML = state.cart.size ? [...state.cart.values()].map(e =>
+    `<div class="line">${tile(e.p)}<div class="info"><div class="nm">${esc(e.p.name)}</div><div class="meta">${esc(e.p.brand)} &middot; ${money(e.p.price)}</div>
+       <button class="rm" data-rm="${e.p.product_id}">Remove</button></div>
+       <div><div class="step"><button data-ldec="${e.p.product_id}">&minus;</button><span>${e.qty}</span><button data-linc="${e.p.product_id}">+</button></div></div>
+       <div class="amt">${money(e.qty * e.p.price)}</div></div>`).join("")
+    : '<div class="emptycart">Your cart is empty.<br>Add something to see recommendations.</div>';
+  $("bItems").textContent = money(subtotal());
+  $("bSave").textContent = "- " + money(savings()); $("bSaveRow").style.display = savings() > 0 ? "" : "none";
+  $("bDel").textContent = n === 0 ? "Rs 0" : (free ? "FREE" : money(delivery));
+  $("bHand").textContent = money(handling);
+  $("bGrand").textContent = money(net + delivery + handling);
+  $("barFill").style.width = Math.min(100, 100 * net / state.threshold) + "%";
+  $("freeText").textContent = free ? "Free delivery unlocked" :
+    (net > 0 ? "Add " + money(state.threshold - net) + " more for free delivery" : "Free delivery above " + money(state.threshold));
+  $("orderBtn").disabled = state.cart.size === 0;
+  // update only the ADD / stepper controls, so the grid does not jump
+  const targets = changedPid === undefined ? document.querySelectorAll("[data-ctl]") : document.querySelectorAll(`[data-ctl="${changedPid}"]`);
+  targets.forEach(el => el.innerHTML = controls(Number(el.dataset.ctl)));
+  const b = $("cartBtn"); b.classList.remove("bump"); void b.offsetWidth; b.classList.add("bump");
+}
+$("cartItems").addEventListener("click", e => {
+  const rm = e.target.closest("[data-rm]"); if (rm) return removeLine(Number(rm.dataset.rm));
+  const d = e.target.closest("[data-ldec]"); if (d) return changeQty(Number(d.dataset.ldec), -1);
+  const i = e.target.closest("[data-linc]"); if (i) addToCart(Number(i.dataset.linc));
+});
+$("orderBtn").addEventListener("click", async () => {
+  if (!state.cart.size) return;
+  const items = [...state.cart.entries()].map(([pid, e]) => ({ product_id: pid, qty: e.qty }));
+  const total = subtotal() - savings();
+  await act("order", { items });
+  state.cart.clear(); renderCart(); closeCart(); toast("Order placed: " + money(total) + " in items");
+});
+function openCart() { $("drawer").classList.add("open"); $("overlay").classList.add("open"); }
+function closeCart() { $("drawer").classList.remove("open"); $("overlay").classList.remove("open"); }
+$("cartBtn").addEventListener("click", openCart);
+$("closeCart").addEventListener("click", closeCart);
+$("overlay").addEventListener("click", closeCart);
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeCart(); });
+
+/* ---------- recommendations ---------- */
+const ageText = a => a >= 90 ? Math.round(a / 60) + " min ago" : (a > 5 ? a + " s ago" : "just now");
+function renderRecs(rec) {
+  const stale = rec.view === "stale";
+  $("viewTag").textContent = stale ? ("STALE DATA" + (rec.snapshot_age_sec != null ? " \u00b7 snapshot " + ageText(rec.snapshot_age_sec) : "")) : "LIVE"; $("viewTag").className = "tag" + (stale ? " stale" : "");
+  rec.recommendations.forEach(x => state.products.set(x.product_id, x));
+  $("recList").innerHTML = rec.recommendations.length ? rec.recommendations.map(x =>
+    `<div class="rec flash" data-rec="${esc(rec.rec_id)}" data-pid="${x.product_id}" data-rule="${esc(x.rule)}">
+       ${tile(x)}
+       <div class="body"><div class="nm">${esc(x.name)}</div>
+         <div class="meta">${money(x.price)}${x.offer_pct ? ` &middot; <b style="color:var(--teal)">${x.offer_pct}% off at checkout</b>` : ""} &middot; ${rating(x)}</div>
+         <span class="chip ${esc(x.rule)}">${esc(RULE[x.rule] || x.rule)}</span>
+         <div class="foot"><div class="why">${esc(x.reason)}</div><button class="add" data-recadd="1">ADD</button></div></div></div>`
+  ).join("") : `<div class="empty">${stale ? "Nothing to show yet: the stale list is built from a snapshot that has not been refreshed since the system started." : "No recommendations yet. Add an item to your cart."}</div>`;
+}
+$("recList").addEventListener("click", e => {
+  const card = e.target.closest("[data-rec]"); if (!card) return;
+  const pid = Number(card.dataset.pid), recId = card.dataset.rec, rule = card.dataset.rule;
+  if (e.target.closest("[data-recadd]")) {
+    if (!state.products.get(pid)) return;
+    addToCart(pid, { type: "rec_add", fields: { rec_id: recId, product_id: pid, rule } });
+  } else { act("rec_click", { rec_id: recId, product_id: pid, rule }); }
+});
+function onRec(rec) {
+  renderRecs(rec);
+  if (rec.view === "stale") { $("latency").textContent = "Stale list: built from a snapshot" + (rec.snapshot_age_sec != null ? " taken " + ageText(rec.snapshot_age_sec) : "") + "; your actions do not change it."; return; }
+  const now = performance.now(), t0 = state.sent.get(rec.trigger_event_id);
+  if (t0 !== undefined) showLatency(now - t0);
+  else { state.seen.set(rec.trigger_event_id, now); if (state.seen.size > 50) state.seen.delete(state.seen.keys().next().value); }
+}
+function showLatency(ms) {
+  state.lat.push(ms); if (state.lat.length > 20) state.lat.shift();
+  const s = [...state.lat].sort((a, b) => a - b);
+  $("latency").textContent = "Updated " + Math.round(ms) + " ms after your action (median " +
+    Math.round(s[Math.floor(s.length / 2)]) + " ms over the last " + s.length + ")";
+}
+
+/* ---------- connection ---------- */
+function setConn(on) { $("conn").className = "conn " + (on ? "on" : ""); $("conn").textContent = on ? "connected" : "reconnecting"; }
+function connect() {
+  return new Promise(resolve => {
+    const ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws/" + state.user);
+    state.ws = ws;
+    ws.onopen = () => { setConn(true); resolve(); };
+    ws.onclose = () => { setConn(false); setTimeout(connect, 1500); };
+    ws.onmessage = ev => onRec(JSON.parse(ev.data));
+  });
+}
+
+/* ---------- start ---------- */
+(async function init() {
+  const cfg = await api("/api/config");
+  const params = new URLSearchParams(location.search);
+  const group = params.get("group") === "control" ? "control" : "treatment";
+  state.user = Number(params.get("user_id")) || cfg.demo_users[group];
+  state.group = cfg.groups[String(state.user)] || group;
+  state.threshold = cfg.free_delivery_threshold;
+  $("who").textContent = "Customer " + state.user;
+  $("badge").textContent = state.group === "treatment" ? "LIVE recommendations" : "STALE recommendations (control)";
+  $("badge").className = "badge " + (state.group === "treatment" ? "live" : "stale");
+  renderRail(cfg.categories);
+  renderCart();
+  await loadProducts();
+  await connect();
+  act("app_open");
+  renderRecs({ view: state.group === "treatment" ? "live" : "stale", recommendations: [], rec_id: "" });
+})();
+</script>
+</body>
+</html>
